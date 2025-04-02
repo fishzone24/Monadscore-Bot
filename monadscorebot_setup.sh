@@ -257,7 +257,7 @@ setup_cron() {
     if crontab -l | grep -q "node.*start.js"; then
         echo -e "${YELLOW}定时任务已存在，跳过${NC}"
         return
-    }
+    fi
     
     # 添加定时任务
     (crontab -l 2>/dev/null; echo "0 7 * * * cd $(pwd) && node start.js >> bot.log 2>&1") | crontab -
