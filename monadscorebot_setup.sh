@@ -119,9 +119,9 @@ create_files() {
         echo -e "${GREEN}✓ 已创建proxies.txt${NC}"
     fi
     
-    # 创建account.json
+    # 创建account.json（实际上是文本文件，每行一个私钥）
     if [ ! -f account.json ]; then
-        echo "[]" > account.json
+        touch account.json
         echo -e "${GREEN}✓ 已创建account.json${NC}"
     fi
 }
@@ -140,7 +140,10 @@ const colors = require('colors');
 const { ethers } = require('ethers');
 
 // 读取配置文件
-const privateKeys = JSON.parse(fs.readFileSync('./account.json', 'utf8'));
+const privateKeys = fs.readFileSync('./account.json', 'utf8')
+    .split('\n')
+    .filter(line => line.trim())
+    .map(line => line.trim());
 const referralCode = fs.readFileSync('./referral.txt', 'utf8').trim();
 const proxies = fs.readFileSync('./proxies.txt', 'utf8')
     .split('\n')
@@ -340,30 +343,8 @@ manage_accounts() {
                     # 确保在正确的目录中
                     cd $INSTALL_DIR
                     
-                    # 添加到account.json（只存储私钥）
-                    if [ ! -f account.json ]; then
-                        echo "[]" > account.json
-                    fi
-                    
-                    # 使用Python处理JSON
-                    python3 -c "
-import json
-import sys
-
-# 读取现有账号
-try:
-    with open('account.json', 'r') as f:
-        accounts = json.load(f)
-except:
-    accounts = []
-
-# 添加新账号（只存储私钥）
-accounts.append('$private_key')
-
-# 写回文件
-with open('account.json', 'w') as f:
-    json.dump(accounts, f, indent=4)
-"
+                    # 添加到account.json（纯文本格式，每行一个私钥）
+                    echo "$private_key" >> account.json
                     
                     # 添加到addresses.json（存储私钥和地址的映射）
                     if [ ! -f addresses.json ]; then
@@ -408,13 +389,9 @@ with open('addresses.json', 'w') as f:
                 
                 echo -e "\n${BLUE}当前账号列表：${NC}"
                 if [ -f account.json ]; then
-                    # 读取私钥列表
-                    private_keys=$(cat account.json | python3 -c "
-import json
-import sys
-keys = json.load(sys.stdin)
-print(json.dumps(keys, indent=4))
-")
+                    # 显示私钥列表
+                    echo -e "${BLUE}私钥列表：${NC}"
+                    cat account.json
                     
                     # 读取地址映射
                     if [ -f addresses.json ]; then
@@ -425,16 +402,11 @@ addrs = json.load(sys.stdin)
 print(json.dumps(addrs, indent=4))
 ")
                         
-                        # 显示账号和地址信息
-                        echo -e "${BLUE}私钥列表：${NC}"
-                        echo "$private_keys"
                         echo -e "${BLUE}地址映射：${NC}"
                         echo "$addresses"
-                    else
-                        echo "$private_keys"
                     fi
                 else
-                    echo "[]"
+                    echo "暂无账号"
                 fi
                 
                 echo -e "\n${BLUE}当前代理列表：${NC}"
@@ -453,21 +425,7 @@ print(json.dumps(addrs, indent=4))
                 
                 # 从account.json中删除
                 if [ -f account.json ]; then
-                    python3 -c "
-import json
-import sys
-
-# 读取现有账号
-with open('account.json', 'r') as f:
-    accounts = json.load(f)
-
-# 过滤掉要删除的账号
-accounts = [acc for acc in accounts if acc != '$private_key']
-
-# 写回文件
-with open('account.json', 'w') as f:
-    json.dump(accounts, f, indent=4)
-"
+                    sed -i "/$private_key/d" account.json
                 fi
                 
                 # 从addresses.json中删除
