@@ -137,14 +137,23 @@ const fs = require('fs');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const colors = require('colors');
+const { ethers } = require('ethers');
 
 // 读取配置文件
-const accounts = JSON.parse(fs.readFileSync('./account.json', 'utf8'));
+const privateKeys = JSON.parse(fs.readFileSync('./account.json', 'utf8'));
 const referralCode = fs.readFileSync('./referral.txt', 'utf8').trim();
 const proxies = fs.readFileSync('./proxies.txt', 'utf8')
     .split('\n')
     .filter(line => line.trim())
     .map(line => line.trim());
+
+// 读取地址映射
+let addressMap = {};
+try {
+    addressMap = JSON.parse(fs.readFileSync('./addresses.json', 'utf8'));
+} catch (error) {
+    console.log(colors.yellow('未找到地址映射文件，将自动生成地址'));
+}
 
 // 创建日志文件
 if (!fs.existsSync('./log.json')) {
@@ -163,9 +172,28 @@ function createProxyAgent(proxy) {
     return new HttpsProxyAgent(proxy);
 }
 
+// 从私钥获取地址
+function getAddressFromPrivateKey(privateKey) {
+    // 如果地址映射中存在，直接返回
+    if (addressMap[privateKey]) {
+        return addressMap[privateKey];
+    }
+    
+    // 否则从私钥派生地址
+    const wallet = new ethers.Wallet(privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`);
+    const address = wallet.address;
+    
+    // 更新地址映射
+    addressMap[privateKey] = address;
+    fs.writeFileSync('./addresses.json', JSON.stringify(addressMap, null, 2));
+    
+    return address;
+}
+
 // 更新节点
 async function updateNode(privateKey, proxy) {
     const agent = createProxyAgent(proxy);
+    const address = getAddressFromPrivateKey(privateKey);
     
     try {
         const response = await axios.post('https://api.monadscore.io/api/v1/node/update', {
@@ -187,10 +215,9 @@ async function updateNode(privateKey, proxy) {
 async function main() {
     console.log(colors.cyan('开始更新节点...'));
     
-    for (let i = 0; i < accounts.length; i++) {
-        const account = accounts[i];
-        const privateKey = account.privateKey;
-        const address = account.address;
+    for (let i = 0; i < privateKeys.length; i++) {
+        const privateKey = privateKeys[i];
+        const address = getAddressFromPrivateKey(privateKey);
         const proxy = proxies[i] || null;
         
         // 检查今天是否已经更新过
@@ -310,14 +337,57 @@ manage_accounts() {
                         console.log(wallet.address);
                     ")
                     
-                    # 添加到account.json
-                    accounts=$(cat account.json)
-                    new_account="{\"privateKey\":\"$private_key\",\"address\":\"$address\"}"
-                    if [ "$accounts" == "[]" ]; then
-                        echo "[$new_account]" > account.json
-                    else
-                        echo "${accounts%,]},$new_account]" > account.json
+                    # 确保在正确的目录中
+                    cd $INSTALL_DIR
+                    
+                    # 添加到account.json（只存储私钥）
+                    if [ ! -f account.json ]; then
+                        echo "[]" > account.json
                     fi
+                    
+                    # 使用Python处理JSON
+                    python3 -c "
+import json
+import sys
+
+# 读取现有账号
+try:
+    with open('account.json', 'r') as f:
+        accounts = json.load(f)
+except:
+    accounts = []
+
+# 添加新账号（只存储私钥）
+accounts.append('$private_key')
+
+# 写回文件
+with open('account.json', 'w') as f:
+    json.dump(accounts, f, indent=4)
+"
+                    
+                    # 添加到addresses.json（存储私钥和地址的映射）
+                    if [ ! -f addresses.json ]; then
+                        echo "{}" > addresses.json
+                    fi
+                    
+                    python3 -c "
+import json
+import sys
+
+# 读取现有地址映射
+try:
+    with open('addresses.json', 'r') as f:
+        addresses = json.load(f)
+except:
+    addresses = {}
+
+# 添加新地址映射
+addresses['$private_key'] = '$address'
+
+# 写回文件
+with open('addresses.json', 'w') as f:
+    json.dump(addresses, f, indent=4)
+"
                     
                     # 添加到proxies.txt
                     if [ ! -z "$proxy" ]; then
@@ -333,27 +403,97 @@ manage_accounts() {
                 echo -e "${GREEN}✓ 所有账号添加完成${NC}"
                 ;;
             2)
+                # 确保在正确的目录中
+                cd $INSTALL_DIR
+                
                 echo -e "\n${BLUE}当前账号列表：${NC}"
-                cat account.json | python3 -m json.tool
+                if [ -f account.json ]; then
+                    # 读取私钥列表
+                    private_keys=$(cat account.json | python3 -c "
+import json
+import sys
+keys = json.load(sys.stdin)
+print(json.dumps(keys, indent=4))
+")
+                    
+                    # 读取地址映射
+                    if [ -f addresses.json ]; then
+                        addresses=$(cat addresses.json | python3 -c "
+import json
+import sys
+addrs = json.load(sys.stdin)
+print(json.dumps(addrs, indent=4))
+")
+                        
+                        # 显示账号和地址信息
+                        echo -e "${BLUE}私钥列表：${NC}"
+                        echo "$private_keys"
+                        echo -e "${BLUE}地址映射：${NC}"
+                        echo "$addresses"
+                    else
+                        echo "$private_keys"
+                    fi
+                else
+                    echo "[]"
+                fi
+                
                 echo -e "\n${BLUE}当前代理列表：${NC}"
-                cat proxies.txt
+                if [ -f proxies.txt ]; then
+                    cat proxies.txt
+                else
+                    echo "暂无代理"
+                fi
                 ;;
             3)
-                echo -e "${YELLOW}请输入要删除的账号地址:${NC}"
-                read address
+                # 确保在正确的目录中
+                cd $INSTALL_DIR
+                
+                echo -e "${YELLOW}请输入要删除的私钥:${NC}"
+                read private_key
                 
                 # 从account.json中删除
-                accounts=$(cat account.json)
-                new_accounts=$(echo "$accounts" | python3 -c "
-import json, sys
-accounts = json.load(sys.stdin)
-accounts = [acc for acc in accounts if acc['address'] != '$address']
-print(json.dumps(accounts))
-")
-                echo "$new_accounts" > account.json
+                if [ -f account.json ]; then
+                    python3 -c "
+import json
+import sys
+
+# 读取现有账号
+with open('account.json', 'r') as f:
+    accounts = json.load(f)
+
+# 过滤掉要删除的账号
+accounts = [acc for acc in accounts if acc != '$private_key']
+
+# 写回文件
+with open('account.json', 'w') as f:
+    json.dump(accounts, f, indent=4)
+"
+                fi
+                
+                # 从addresses.json中删除
+                if [ -f addresses.json ]; then
+                    python3 -c "
+import json
+import sys
+
+# 读取现有地址映射
+with open('addresses.json', 'r') as f:
+    addresses = json.load(f)
+
+# 删除要删除的账号
+if '$private_key' in addresses:
+    del addresses['$private_key']
+
+# 写回文件
+with open('addresses.json', 'w') as f:
+    json.dump(addresses, f, indent=4)
+"
+                fi
                 
                 # 从proxies.txt中删除对应的代理
-                sed -i "/$address/d" proxies.txt
+                if [ -f proxies.txt ]; then
+                    sed -i "/$private_key/d" proxies.txt
+                fi
                 
                 echo -e "${GREEN}✓ 账号删除成功${NC}"
                 ;;
