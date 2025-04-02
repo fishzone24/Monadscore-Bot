@@ -106,7 +106,6 @@ create_files() {
     if [ ! -f proxies.txt ]; then
         touch proxies.txt
         echo -e "${GREEN}✓ 已创建proxies.txt${NC}"
-        echo -e "${YELLOW}提示: 您可以在proxies.txt中添加代理服务器${NC}"
     fi
     
     # 创建account.json
@@ -144,12 +143,6 @@ if (!fs.existsSync('./log.json')) {
 // 读取日志
 const logs = JSON.parse(fs.readFileSync('./log.json', 'utf8'));
 
-// 获取随机代理
-function getRandomProxy() {
-    if (proxies.length === 0) return null;
-    return proxies[Math.floor(Math.random() * proxies.length)];
-}
-
 // 创建代理agent
 function createProxyAgent(proxy) {
     if (!proxy) return null;
@@ -160,8 +153,7 @@ function createProxyAgent(proxy) {
 }
 
 // 更新节点
-async function updateNode(privateKey) {
-    const proxy = getRandomProxy();
+async function updateNode(privateKey, proxy) {
     const agent = createProxyAgent(proxy);
     
     try {
@@ -184,9 +176,11 @@ async function updateNode(privateKey) {
 async function main() {
     console.log(colors.cyan('开始更新节点...'));
     
-    for (const account of accounts) {
+    for (let i = 0; i < accounts.length; i++) {
+        const account = accounts[i];
         const privateKey = account.privateKey;
         const address = account.address;
+        const proxy = proxies[i] || null;
         
         // 检查今天是否已经更新过
         const today = new Date().toISOString().split('T')[0];
@@ -196,7 +190,7 @@ async function main() {
         }
         
         console.log(colors.cyan(`正在更新地址: ${address}`));
-        const result = await updateNode(privateKey);
+        const result = await updateNode(privateKey, proxy);
         
         if (result) {
             console.log(colors.green(`更新成功: ${address}`));
@@ -264,6 +258,226 @@ setup_cron() {
     echo -e "${GREEN}✓ 已设置每天早上7点自动运行${NC}"
 }
 
+# 管理账号
+manage_accounts() {
+    while true; do
+        echo -e "\n${BLUE}账号管理${NC}"
+        echo -e "1. 添加账号"
+        echo -e "2. 查看所有账号"
+        echo -e "3. 删除账号"
+        echo -e "4. 返回主菜单"
+        read -p "请选择操作 [1-4]: " choice
+        
+        case $choice in
+            1)
+                echo -e "${YELLOW}请输入私钥（不需要0x前缀）:${NC}"
+                read private_key
+                echo -e "${YELLOW}请输入对应的代理地址（可选，直接回车跳过）:${NC}"
+                read proxy
+                
+                # 添加到account.json
+                accounts=$(cat account.json)
+                new_account="{\"privateKey\":\"$private_key\",\"address\":\"$(echo $private_key | cut -c3-)\"}"
+                if [ "$accounts" == "[]" ]; then
+                    echo "[$new_account]" > account.json
+                else
+                    echo "${accounts%,]},$new_account]" > account.json
+                fi
+                
+                # 添加到proxies.txt
+                if [ ! -z "$proxy" ]; then
+                    echo "$proxy" >> proxies.txt
+                else
+                    echo "" >> proxies.txt
+                fi
+                
+                echo -e "${GREEN}✓ 账号添加成功${NC}"
+                ;;
+            2)
+                echo -e "\n${BLUE}当前账号列表：${NC}"
+                cat account.json | python3 -m json.tool
+                echo -e "\n${BLUE}当前代理列表：${NC}"
+                cat proxies.txt
+                ;;
+            3)
+                echo -e "${YELLOW}请输入要删除的账号地址:${NC}"
+                read address
+                
+                # 从account.json中删除
+                accounts=$(cat account.json)
+                new_accounts=$(echo "$accounts" | python3 -c "
+import json, sys
+accounts = json.load(sys.stdin)
+accounts = [acc for acc in accounts if acc['address'] != '$address']
+print(json.dumps(accounts))
+")
+                echo "$new_accounts" > account.json
+                
+                # 从proxies.txt中删除对应的代理
+                sed -i "/$address/d" proxies.txt
+                
+                echo -e "${GREEN}✓ 账号删除成功${NC}"
+                ;;
+            4)
+                return
+                ;;
+            *)
+                echo -e "${RED}无效的选择${NC}"
+                ;;
+        esac
+    done
+}
+
+# 管理代理
+manage_proxies() {
+    while true; do
+        echo -e "\n${BLUE}代理管理${NC}"
+        echo -e "1. 添加代理"
+        echo -e "2. 查看所有代理"
+        echo -e "3. 删除代理"
+        echo -e "4. 返回主菜单"
+        read -p "请选择操作 [1-4]: " choice
+        
+        case $choice in
+            1)
+                echo -e "${YELLOW}请输入代理地址（支持http和socks5）:${NC}"
+                read proxy
+                echo "$proxy" >> proxies.txt
+                echo -e "${GREEN}✓ 代理添加成功${NC}"
+                ;;
+            2)
+                echo -e "\n${BLUE}当前代理列表：${NC}"
+                cat proxies.txt
+                ;;
+            3)
+                echo -e "${YELLOW}请输入要删除的代理地址:${NC}"
+                read proxy
+                sed -i "/$proxy/d" proxies.txt
+                echo -e "${GREEN}✓ 代理删除成功${NC}"
+                ;;
+            4)
+                return
+                ;;
+            *)
+                echo -e "${RED}无效的选择${NC}"
+                ;;
+        esac
+    done
+}
+
+# 控制机器人
+control_bot() {
+    while true; do
+        echo -e "\n${BLUE}机器人控制${NC}"
+        echo -e "1. 启动机器人"
+        echo -e "2. 停止机器人"
+        echo -e "3. 查看运行状态"
+        echo -e "4. 返回主菜单"
+        read -p "请选择操作 [1-4]: " choice
+        
+        case $choice in
+            1)
+                if pgrep -f "node start.js" > /dev/null; then
+                    echo -e "${YELLOW}机器人已经在运行中${NC}"
+                else
+                    nohup node start.js > bot.log 2>&1 &
+                    echo -e "${GREEN}✓ 机器人已启动${NC}"
+                fi
+                ;;
+            2)
+                if pgrep -f "node start.js" > /dev/null; then
+                    pkill -f "node start.js"
+                    echo -e "${GREEN}✓ 机器人已停止${NC}"
+                else
+                    echo -e "${YELLOW}机器人未在运行${NC}"
+                fi
+                ;;
+            3)
+                if pgrep -f "node start.js" > /dev/null; then
+                    echo -e "${GREEN}机器人正在运行${NC}"
+                else
+                    echo -e "${YELLOW}机器人未在运行${NC}"
+                fi
+                ;;
+            4)
+                return
+                ;;
+            *)
+                echo -e "${RED}无效的选择${NC}"
+                ;;
+        esac
+    done
+}
+
+# 查看日志
+view_logs() {
+    while true; do
+        echo -e "\n${BLUE}日志查看${NC}"
+        echo -e "1. 查看运行日志"
+        echo -e "2. 查看更新记录"
+        echo -e "3. 返回主菜单"
+        read -p "请选择操作 [1-3]: " choice
+        
+        case $choice in
+            1)
+                if [ -f bot.log ]; then
+                    tail -n 50 bot.log
+                else
+                    echo -e "${YELLOW}暂无运行日志${NC}"
+                fi
+                ;;
+            2)
+                if [ -f log.json ]; then
+                    cat log.json | python3 -m json.tool
+                else
+                    echo -e "${YELLOW}暂无更新记录${NC}"
+                fi
+                ;;
+            3)
+                return
+                ;;
+            *)
+                echo -e "${RED}无效的选择${NC}"
+                ;;
+        esac
+    done
+}
+
+# 主菜单
+show_menu() {
+    while true; do
+        echo -e "\n${BLUE}主菜单${NC}"
+        echo -e "1. 管理账号"
+        echo -e "2. 管理代理"
+        echo -e "3. 控制机器人"
+        echo -e "4. 查看日志"
+        echo -e "5. 退出"
+        read -p "请选择操作 [1-5]: " choice
+        
+        case $choice in
+            1)
+                manage_accounts
+                ;;
+            2)
+                manage_proxies
+                ;;
+            3)
+                control_bot
+                ;;
+            4)
+                view_logs
+                ;;
+            5)
+                echo -e "${GREEN}感谢使用！${NC}"
+                exit 0
+                ;;
+            *)
+                echo -e "${RED}无效的选择${NC}"
+                ;;
+        esac
+    done
+}
+
 # 主函数
 main() {
     check_system
@@ -273,10 +487,7 @@ main() {
     setup_cron
     
     echo -e "${GREEN}安装完成！${NC}"
-    echo -e "${YELLOW}您现在可以：${NC}"
-    echo -e "1. 编辑 account.json 添加您的钱包私钥"
-    echo -e "2. 编辑 proxies.txt 添加代理服务器（可选）"
-    echo -e "3. 运行 ./start_bot.sh 启动节点更新服务"
+    show_menu
 }
 
 # 运行主函数
