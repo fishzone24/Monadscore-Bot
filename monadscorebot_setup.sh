@@ -416,25 +416,30 @@ control_bot() {
         
         case $choice in
             1)
-                if pgrep -f "node start.js" > /dev/null; then
+                if pgrep -f "node.*start.js" > /dev/null; then
                     echo -e "${YELLOW}机器人已经在运行中${NC}"
                 else
                     cd $INSTALL_DIR
                     nohup node start.js > bot.log 2>&1 &
                     echo -e "${GREEN}✓ 机器人已启动${NC}"
+                    # 等待一秒，确保进程已经启动
+                    sleep 1
                 fi
                 ;;
             2)
-                if pgrep -f "node start.js" > /dev/null; then
-                    pkill -f "node start.js"
+                if pgrep -f "node.*start.js" > /dev/null; then
+                    pkill -f "node.*start.js"
                     echo -e "${GREEN}✓ 机器人已停止${NC}"
                 else
                     echo -e "${YELLOW}机器人未在运行${NC}"
                 fi
                 ;;
             3)
-                if pgrep -f "node start.js" > /dev/null; then
+                if pgrep -f "node.*start.js" > /dev/null; then
                     echo -e "${GREEN}机器人正在运行${NC}"
+                    # 显示进程信息
+                    echo -e "${BLUE}进程信息:${NC}"
+                    ps aux | grep "node.*start.js" | grep -v grep
                 else
                     echo -e "${YELLOW}机器人未在运行${NC}"
                 fi
