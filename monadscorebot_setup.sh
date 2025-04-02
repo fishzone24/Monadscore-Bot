@@ -28,6 +28,17 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# 设置安装目录
+INSTALL_DIR="/root/MonandScore-Bot"
+
+# 创建安装目录
+create_install_dir() {
+    echo -e "${BLUE}正在创建安装目录...${NC}"
+    mkdir -p $INSTALL_DIR
+    cd $INSTALL_DIR
+    echo -e "${GREEN}✓ 已创建安装目录: $INSTALL_DIR${NC}"
+}
+
 # 检查系统要求
 check_system() {
     echo -e "${BLUE}正在检查系统要求...${NC}"
@@ -240,6 +251,15 @@ exec('node index.js', (error, stdout, stderr) => {
 });
 EOF
 
+    # 创建启动脚本
+    cat > start_bot.sh << 'EOF'
+#!/bin/bash
+cd /root/MonandScore-Bot
+node start.js
+EOF
+
+    chmod +x start_bot.sh
+
     echo -e "${GREEN}✓ 已创建主程序文件${NC}"
 }
 
@@ -254,7 +274,7 @@ setup_cron() {
     fi
     
     # 添加定时任务
-    (crontab -l 2>/dev/null; echo "0 7 * * * cd $(pwd) && node start.js >> bot.log 2>&1") | crontab -
+    (crontab -l 2>/dev/null; echo "0 7 * * * cd $INSTALL_DIR && node start.js >> bot.log 2>&1") | crontab -
     echo -e "${GREEN}✓ 已设置每天早上7点自动运行${NC}"
 }
 
@@ -380,6 +400,7 @@ control_bot() {
                 if pgrep -f "node start.js" > /dev/null; then
                     echo -e "${YELLOW}机器人已经在运行中${NC}"
                 else
+                    cd $INSTALL_DIR
                     nohup node start.js > bot.log 2>&1 &
                     echo -e "${GREEN}✓ 机器人已启动${NC}"
                 fi
@@ -480,6 +501,7 @@ show_menu() {
 
 # 主函数
 main() {
+    create_install_dir
     check_system
     install_dependencies
     create_files
@@ -487,6 +509,7 @@ main() {
     setup_cron
     
     echo -e "${GREEN}安装完成！${NC}"
+    echo -e "${YELLOW}安装目录: $INSTALL_DIR${NC}"
     show_menu
 }
 

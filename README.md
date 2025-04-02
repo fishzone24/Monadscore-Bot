@@ -40,6 +40,8 @@ chmod +x monadscorebot_setup.sh
 ./monadscorebot_setup.sh
 ```
 
+脚本会自动在 `/root/MonandScore-Bot` 目录下安装所有文件。
+
 ### **方法二：手动安装**
 
 #### **步骤 1: 克隆仓库**  
@@ -110,6 +112,11 @@ socks5://proxy2.com:port
 ### **邀请码设置**
 - 修改 `referral.txt` 文件中的邀请码
 
+### **安装目录**
+- 默认安装目录：`/root/MonandScore-Bot`
+- 所有文件都会安装在此目录下
+- 定时任务和启动脚本都会使用此目录
+
 ---
 
 ## **📦 依赖**
@@ -152,6 +159,17 @@ socks5://proxy2.com:port
 crontab -e
 ```
 然后修改相应的时间设置。
+
+### **5️⃣ 安装目录在哪里？**
+
+默认安装目录是 `/root/MonandScore-Bot`。所有文件都会安装在此目录下，包括：
+- `account.json` - 账号信息
+- `proxies.txt` - 代理列表
+- `referral.txt` - 邀请码
+- `index.js` - 主程序
+- `start.js` - 启动脚本
+- `bot.log` - 运行日志
+- `log.json` - 更新记录
 
 ---
 
