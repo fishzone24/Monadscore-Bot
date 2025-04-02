@@ -290,28 +290,47 @@ manage_accounts() {
         
         case $choice in
             1)
-                echo -e "${YELLOW}请输入私钥（不需要0x前缀）:${NC}"
-                read private_key
-                echo -e "${YELLOW}请输入对应的代理地址（可选，直接回车跳过）:${NC}"
-                read proxy
+                echo -e "${YELLOW}请输入私钥（不需要0x前缀），直接按回车键结束输入:${NC}"
                 
-                # 添加到account.json
-                accounts=$(cat account.json)
-                new_account="{\"privateKey\":\"$private_key\",\"address\":\"$(echo $private_key | cut -c3-)\"}"
-                if [ "$accounts" == "[]" ]; then
-                    echo "[$new_account]" > account.json
-                else
-                    echo "${accounts%,]},$new_account]" > account.json
-                fi
+                while true; do
+                    read -p "私钥: " private_key
+                    
+                    # 如果用户直接按回车键，则结束输入
+                    if [ -z "$private_key" ]; then
+                        break
+                    fi
+                    
+                    echo -e "${YELLOW}请输入对应的代理地址（可选，直接回车跳过）:${NC}"
+                    read proxy
+                    
+                    # 使用ethers库从私钥派生地址
+                    address=$(node -e "
+                        const { ethers } = require('ethers');
+                        const wallet = new ethers.Wallet('0x${private_key}');
+                        console.log(wallet.address);
+                    ")
+                    
+                    # 添加到account.json
+                    accounts=$(cat account.json)
+                    new_account="{\"privateKey\":\"$private_key\",\"address\":\"$address\"}"
+                    if [ "$accounts" == "[]" ]; then
+                        echo "[$new_account]" > account.json
+                    else
+                        echo "${accounts%,]},$new_account]" > account.json
+                    fi
+                    
+                    # 添加到proxies.txt
+                    if [ ! -z "$proxy" ]; then
+                        echo "$proxy" >> proxies.txt
+                    else
+                        echo "" >> proxies.txt
+                    fi
+                    
+                    echo -e "${GREEN}✓ 账号添加成功${NC}"
+                    echo -e "${YELLOW}继续输入下一个账号，或直接按回车键结束输入${NC}"
+                done
                 
-                # 添加到proxies.txt
-                if [ ! -z "$proxy" ]; then
-                    echo "$proxy" >> proxies.txt
-                else
-                    echo "" >> proxies.txt
-                fi
-                
-                echo -e "${GREEN}✓ 账号添加成功${NC}"
+                echo -e "${GREEN}✓ 所有账号添加完成${NC}"
                 ;;
             2)
                 echo -e "\n${BLUE}当前账号列表：${NC}"
